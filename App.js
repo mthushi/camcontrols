@@ -2,292 +2,192 @@ import React, {useState, useEffect} from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Button,
+  FlatList,
   StyleSheet,
-  SafeAreaView,
-  PermissionsAndroid,
-  Platform,
-  NativeEventEmitter,
-  NativeModules,
+  TouchableOpacity,
 } from 'react-native';
+import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import {Picker} from '@react-native-picker/picker';
-import BleManager from 'react-native-ble-manager';
-import {TextEncoder} from 'text-encoding';
+import {ColorPicker} from 'react-native-color-picker';
+import tinycolor from 'tinycolor2';
+import Modal from 'react-native-modal';
 
-const BleManagerModule = NativeModules.BleManager;
-const BleManagerEmitter = new NativeEventEmitter(BleManagerModule);
+const ArrowButton = ({text, onPress}) => (
+  <TouchableOpacity style={styles.arrowButton} onPress={onPress}>
+    <Text style={styles.arrowButtonText}>{text}</Text>
+  </TouchableOpacity>
+);
 
 const App = () => {
-  const [selectedValue, setSelectedValue] = useState('10');
-  const [connected, setConnected] = useState(false);
-  const [deviceID, setDeviceID] = useState('');
-
-  const checkAndRequestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const fineLocationGranted = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        );
-        const coarseLocationGranted = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-        );
-
-        const bluetoothScanGranted =
-          Platform.Version >= 31
-            ? await PermissionsAndroid.check(
-                PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-              )
-            : true;
-        const bluetoothConnectGranted =
-          Platform.Version >= 31
-            ? await PermissionsAndroid.check(
-                PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-              )
-            : true;
-
-        if (
-          !fineLocationGranted ||
-          !coarseLocationGranted ||
-          !bluetoothScanGranted ||
-          !bluetoothConnectGranted
-        ) {
-          const permissions = [
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-          ];
-
-          if (Platform.Version >= 31) {
-            console.log('version >31');
-            permissions.push(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
-            permissions.push(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT);
-          }
-
-          const granted = await PermissionsAndroid.requestMultiple(permissions);
-
-          return (
-            granted['android.permission.ACCESS_FINE_LOCATION'] ===
-              PermissionsAndroid.RESULTS.GRANTED &&
-            granted['android.permission.ACCESS_COARSE_LOCATION'] ===
-              PermissionsAndroid.RESULTS.GRANTED &&
-            (Platform.Version < 31 ||
-              (granted['android.permission.BLUETOOTH_SCAN'] ===
-                PermissionsAndroid.RESULTS.GRANTED &&
-                granted['android.permission.BLUETOOTH_CONNECT'] ===
-                  PermissionsAndroid.RESULTS.GRANTED))
-          );
-        }
-        return true;
-      } catch (err) {
-        console.warn(err);
-        return false;
-      }
-    }
-    return true;
-  };
-
-  const checkBluetoothState = () => {
-    BleManager.checkState();
-    BleManagerEmitter.addListener('BleManagerDidUpdateState', args => {
-      if (args.state === 'on') {
-        console.log('Bluetooth is on');
-      } else {
-        console.log('Bluetooth is off');
-      }
-    });
-  };
+  const [devices, setDevices] = useState([]);
+  const [connectedDevice, setConnectedDevice] = useState(null);
+  const [selectedValue, setSelectedValue] = useState(10);
+  const [modelVisible, setModalVisible] = useState(false);
+  const [selectedColor, setSelectedColor] = useState('#ffffff');
 
   useEffect(() => {
-    BleManager.start({showAlert: false})
-      .then(() => {
-        console.log('BleManager initialized');
-      })
-      .catch(error => {
-        console.error('BleManager initialization failed', error);
-      });
-    checkAndRequestPermissions().then(granted => {
-      checkBluetoothState();
-      console.log('granted', granted);
-      if (granted) {
-        console.log('Permissions granted');
-      } else {
-        console.log('Permissions denied');
+    const fetchPairedDevices = async () => {
+      try {
+        const pairedDevices = await RNBluetoothClassic.getBondedDevices();
+        console.log('pairedDevices', pairedDevices);
+        setDevices(pairedDevices);
+      } catch (error) {
+        console.error(error);
       }
-    });
+    };
+
+    fetchPairedDevices();
   }, []);
 
-  const connectToArduino = async () => {
-    console.log('connectToArduino');
+  const connectToDevice = async device => {
     try {
-      await BleManager.scan([], 5, true);
-      console.log('Scanning...');
-      setTimeout(async () => {
-        try {
-          const devices = await BleManager.getDiscoveredPeripherals();
-          console.log('Devices discovered:', devices);
-          console.log('devices data1', devices[0].advertising);
-          console.log('devices data2', devices[1].advertising);
-          console.log('devices data3', devices[2].advertising);
-
-          const arduino = devices.find(device => device.name === 'HC-05');
-          const phone = devices.find(
-            device => device.name === "Thushitha's S23+",
-          );
-
-          if (arduino) {
-            await BleManager.connect(arduino.id);
-            setConnected(true);
-            setDeviceID(arduino.id);
-            console.log('Connected to Arduino');
-          } else {
-            console.log('Arduino not found');
-          }
-        } catch (error) {
-          console.error('Error discovering peripherals:', error);
-        }
-      }, 5000); // Wait for 5 seconds to allow the scan to complete
+      const connection = await RNBluetoothClassic.connectToDevice(
+        device.address,
+      );
+      setConnectedDevice(connection);
+      console.log('Connected to', device.name);
     } catch (error) {
-      console.error('Error during scanning:', error);
+      console.error('Connection failed', error);
     }
   };
 
-  const sendMessage = async message => {
-    console.log('message', message);
-    connectToArduino();
-    if (connected) {
-      const data = new TextEncoder().encode(message);
-      // Change 'serviceUUID' and 'characteristicUUID' to match your Bluetooth module's characteristics
-      await BleManager.write(
-        'deviceID',
-        'serviceUUID',
-        'characteristicUUID',
-        data,
-      );
-      console.log('Message sent');
+  const sendData = async data => {
+    if (connectedDevice) {
+      try {
+        await connectedDevice.write(data);
+        console.log('Data sent', data);
+      } catch (error) {
+        console.error('Failed to send data', error);
+      }
     }
+  };
+
+  const handleOpenPicker = () => {
+    setModalVisible(true);
+  };
+
+  const handleColorSelection = () => {
+    setModalVisible(false);
+    console.log('handleCOlorselection');
+  };
+
+  const handleColorSelected = color => {
+    console.log('handleColorSelected');
+    const hexColor = tinycolor(color).toHexString();
+    setSelectedColor(hexColor);
+    console.log(selectedColor);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.previewContainer}>
-        <Text style={styles.previewText}>Preview</Text>
-      </View>
-
-      <View style={styles.controlPanelContainer}>
-        <Text style={styles.controlPanelText}>Control Panel</Text>
-
-        <Text style={styles.label}>Light selection</Text>
-        <View style={styles.lightSelectionContainer}>
-          <TouchableOpacity style={styles.lightButtonRed}>
-            <Text style={styles.buttonText}>Red</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.lightButtonGreen}>
-            <Text style={styles.buttonText}>Green</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.lightButtonBlue}>
-            <Text style={styles.buttonText}>Blue</Text>
-          </TouchableOpacity>
+    <View>
+      {!connectedDevice && (
+        <FlatList
+          data={devices}
+          keyExtractor={item => item.address}
+          renderItem={({item}) => (
+            <Button title={item.name} onPress={() => connectToDevice(item)} />
+          )}
+        />
+      )}
+      {connectedDevice && (
+        <View>
+          <Text>Connected to {connectedDevice.name}</Text>
         </View>
+      )}
 
-        <Text style={styles.label}>Select Number of degrees</Text>
+      <View style={styles.section1}>
+        <Text style={styles.label}>Stepper motor control</Text>
         <View style={styles.degreesContainer}>
           <Picker
             selectedValue={selectedValue}
             style={styles.picker}
             onValueChange={itemValue => setSelectedValue(itemValue)}>
             <Picker.Item label="10" value="10" />
-            <Picker.Item label="15" value="30" />
-            <Picker.Item label="20" value="60" />
-            <Picker.Item label="30" value="180" />
-            <Picker.Item label="40" value="180" />
-            <Picker.Item label="45" value="180" />
-            <Picker.Item label="60" value="180" />
-            <Picker.Item label="90" value="180" />
+            <Picker.Item label="15" value="15" />
+            <Picker.Item label="20" value="20" />
+            <Picker.Item label="30" value="30" />
+            <Picker.Item label="40" value="40" />
+            <Picker.Item label="45" value="45" />
+            <Picker.Item label="60" value="60" />
+            <Picker.Item label="90" value="90" />
             <Picker.Item label="180" value="180" />
           </Picker>
           <TouchableOpacity
             style={styles.startButton}
-            onPress={() => sendMessage('Hello Arduino')}>
-            <Text style={styles.buttonText}>Start</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.buttonText}>Capture</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Text style={styles.buttonText}>Reset</Text>
+            onPress={() => sendData(`d=${selectedValue}`)}>
+            <Text style={styles.buttonText}>Set degree</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <TouchableOpacity style={styles.exitButton}>
-        <Text style={styles.buttonText}>Exit</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
+      <View style={styles.section2}>
+        <Text style={styles.label}>LED light panel control</Text>
+        <View style={styles.colorContainer}>
+          <TouchableOpacity
+            style={styles.colorButton}
+            onPress={() => handleOpenPicker('Hello Arduino')}>
+            <Text style={styles.buttonText}>Select Color</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={() => sendData(`c=${selectedColor}`)}>
+            <Text style={styles.buttonText}>Set color</Text>
+          </TouchableOpacity>
+        </View>
+        <Modal isVisible={modelVisible}>
+          <View style={styles.modalContent}>
+            <View style={styles.pickerContainer}>
+              <ColorPicker
+                onColorChange={color => handleColorSelected(color)}
+                style={styles.colorPicker}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.colorButton}
+              onPress={() => handleColorSelection()}>
+              <Text style={styles.buttonText}>Select color</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      </View>
+
+      <View style={styles.section3}>
+        <Text style={styles.label}>Camera stand control</Text>
+
+        <View style={styles.arrowContainer}>
+          <View style={styles.row}>
+            <ArrowButton text="↑" onPress={() => sendData('m=up')} />
+          </View>
+          <View style={styles.row}>
+            <ArrowButton text="←" onPress={() => sendData('m=left')} />
+            <ArrowButton text="→" onPress={() => sendData('m=right')} />
+          </View>
+          <View style={styles.row}>
+            <ArrowButton text="↓" onPress={() => sendData('m=down')} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.actionButtonsContainer}>
+        <TouchableOpacity style={styles.actionButton}>
+          <Text style={styles.buttonText}>Capture</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton}>
+          <Text style={styles.buttonText}>Reset</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#e0e0e0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
-  },
-  previewContainer: {
-    width: '100%',
-    height: 150,
-    backgroundColor: '#d32f2f',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  previewText: {
-    fontSize: 24,
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  controlPanelContainer: {
-    width: '100%',
-    backgroundColor: '#9e9e9e',
-    borderRadius: 10,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  controlPanelText: {
+  label: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
     marginBottom: 10,
-  },
-  lightSelectionContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginBottom: 20,
-  },
-  lightButtonRed: {
-    backgroundColor: '#d32f2f',
-    padding: 10,
-    borderRadius: 5,
-  },
-  lightButtonGreen: {
-    backgroundColor: '#388e3c',
-    padding: 10,
-    borderRadius: 5,
-  },
-  lightButtonBlue: {
-    backgroundColor: '#1976d2',
-    padding: 10,
-    borderRadius: 5,
+    textAlign: 'left',
+    color: 'black',
   },
   buttonText: {
     color: 'white',
@@ -296,38 +196,89 @@ const styles = StyleSheet.create({
   degreesContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
+    justifyContent: 'space-between',
+    paddingRight: 10,
   },
   picker: {
-    flex: 1,
+    width: 120,
     height: 50,
-    width: 150,
     marginRight: 10,
   },
   startButton: {
-    backgroundColor: '#d32f2f',
+    backgroundColor: '#033240',
     padding: 10,
     borderRadius: 5,
+    width: 100,
+    alignItems: 'center',
   },
-  actionButtonsContainer: {
+  colorButton: {
+    backgroundColor: '#000000',
+    padding: 10,
+    borderRadius: 5,
+    width: 150,
+    alignItems: 'center',
+  },
+  colorContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  actionButton: {
-    backgroundColor: '#d32f2f',
-    padding: 10,
-    borderRadius: 5,
-    width: '45%',
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 4,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  pickerContainer: {
+    height: '65%',
+    width: '100%',
+    marginBottom: 10,
+    alignSelf: 'center',
+  },
+  colorPicker: {
+    flex: 1,
+  },
+  section0: {
+    backgroundColor: '#ffffff',
+    height: '45%',
+  },
+  section1: {
+    backgroundColor: '#E0F8E0',
+    marginBottom: 2,
+    padding: 5,
+  },
+  section2: {
+    backgroundColor: '#E0F0F8',
+    marginBottom: 2,
+    padding: 5,
+  },
+  section3: {
+    backgroundColor: '#F0F0F0',
+    marginBottom: 2,
+    padding: 5,
+  },
+  arrowContainer: {
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  exitButton: {
-    backgroundColor: '#d32f2f',
-    padding: 15,
-    borderRadius: 5,
-    width: '100%',
-    alignItems: 'center',
+  row: {
+    flexDirection: 'row',
+    marginBottom: 2,
+  },
+  arrowButton: {
+    backgroundColor: '#033240',
+    paddingVertical: 2,
+    paddingHorizontal: 20,
+    borderRadius: 1,
+    marginHorizontal: 5,
+  },
+  arrowButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    textAlign: 'center',
   },
 });
 
