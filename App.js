@@ -6,12 +6,14 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import {Picker} from '@react-native-picker/picker';
 import {ColorPicker} from 'react-native-color-picker';
 import tinycolor from 'tinycolor2';
 import Modal from 'react-native-modal';
+import {WebView} from 'react-native-webview';
 
 const ArrowButton = ({text, onPress}) => (
   <TouchableOpacity style={styles.arrowButton} onPress={onPress}>
@@ -25,6 +27,9 @@ const App = () => {
   const [selectedValue, setSelectedValue] = useState(10);
   const [modelVisible, setModalVisible] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#ffffff');
+  const [inputUrl, setInputUrl] = useState('');
+  const [url, setUrl] = useState('');
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const fetchPairedDevices = async () => {
@@ -79,6 +84,40 @@ const App = () => {
     console.log(selectedColor);
   };
 
+  const handleSetUrl = () => {
+    setUrl(inputUrl);
+    setLoadError(false);
+  };
+
+  const htmlContent = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ESP32-CAM Stream</title>
+      <style>
+        body {
+          margin: 0;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          background-color: black;
+        }
+        img {
+          width: 100%;
+          height: auto;
+        }
+      </style>
+  </head>
+  <body>
+      <img src="${url}" onerror="document.body.innerHTML = '<h1 style=\\"color: white;\\">Failed to load stream</h1>'" />
+  </body>
+  </html>
+  `;
+
   return (
     <View>
       {!connectedDevice && (
@@ -115,7 +154,7 @@ const App = () => {
           </Picker>
           <TouchableOpacity
             style={styles.startButton}
-            onPress={() => sendData(`d=${selectedValue}`)}>
+            onPress={() => sendData(`d${selectedValue}n`)}>
             <Text style={styles.buttonText}>Set degree</Text>
           </TouchableOpacity>
         </View>
@@ -131,7 +170,7 @@ const App = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.startButton}
-            onPress={() => sendData(`c=${selectedColor}`)}>
+            onPress={() => sendData(`g${selectedColor}n`)}>
             <Text style={styles.buttonText}>Set color</Text>
           </TouchableOpacity>
         </View>
@@ -157,14 +196,14 @@ const App = () => {
 
         <View style={styles.arrowContainer}>
           <View style={styles.row}>
-            <ArrowButton text="↑" onPress={() => sendData('m=up')} />
+            <ArrowButton text="↑" onPress={() => sendData('1n')} />
           </View>
           <View style={styles.row}>
-            <ArrowButton text="←" onPress={() => sendData('m=left')} />
-            <ArrowButton text="→" onPress={() => sendData('m=right')} />
+            <ArrowButton text="←" onPress={() => sendData('3n')} />
+            <ArrowButton text="→" onPress={() => sendData('4n')} />
           </View>
           <View style={styles.row}>
-            <ArrowButton text="↓" onPress={() => sendData('m=down')} />
+            <ArrowButton text="↓" onPress={() => sendData('2n')} />
           </View>
         </View>
       </View>
@@ -176,6 +215,24 @@ const App = () => {
         <TouchableOpacity style={styles.actionButton}>
           <Text style={styles.buttonText}>Reset</Text>
         </TouchableOpacity>
+      </View>
+
+      <View>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter MJPEG endpoint"
+          value={inputUrl}
+          onChangeText={setInputUrl}
+        />
+        <Button title="Load Video" onPress={handleSetUrl} />
+        {url && (
+          <WebView
+            originWhitelist={['*']}
+            source={{html: htmlContent}}
+            style={styles.webview}
+            onError={() => setLoadError(true)}
+          />
+        )}
       </View>
     </View>
   );
@@ -279,6 +336,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     textAlign: 'center',
+  },
+  input: {
+    height: 40,
+    borderColor: 'gray',
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  webview: {
+    flex: 0.3,
+    width: '100%',
+    height: '100%',
+  },
+  placeholder: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
 });
 
