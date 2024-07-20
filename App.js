@@ -6,14 +6,12 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
 } from 'react-native';
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import {Picker} from '@react-native-picker/picker';
 import {ColorPicker} from 'react-native-color-picker';
 import tinycolor from 'tinycolor2';
 import Modal from 'react-native-modal';
-import {WebView} from 'react-native-webview';
 
 const ArrowButton = ({text, onPress}) => (
   <TouchableOpacity style={styles.arrowButton} onPress={onPress}>
@@ -27,9 +25,6 @@ const App = () => {
   const [selectedValue, setSelectedValue] = useState(10);
   const [modelVisible, setModalVisible] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#ffffff');
-  const [inputUrl, setInputUrl] = useState('');
-  const [url, setUrl] = useState('');
-  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const fetchPairedDevices = async () => {
@@ -83,40 +78,6 @@ const App = () => {
     setSelectedColor(hexColor);
     console.log(selectedColor);
   };
-
-  const handleSetUrl = () => {
-    setUrl(inputUrl);
-    setLoadError(false);
-  };
-
-  const htmlContent = `
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>ESP32-CAM Stream</title>
-      <style>
-        body {
-          margin: 0;
-          padding: 0;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-          background-color: black;
-        }
-        img {
-          width: 100%;
-          height: auto;
-        }
-      </style>
-  </head>
-  <body>
-      <img src="${url}" onerror="document.body.innerHTML = '<h1 style=\\"color: white;\\">Failed to load stream</h1>'" />
-  </body>
-  </html>
-  `;
 
   return (
     <View>
@@ -209,30 +170,20 @@ const App = () => {
       </View>
 
       <View style={styles.actionButtonsContainer}>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={() => sendData('ycapturen')}>
           <Text style={styles.buttonText}>Capture</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={() => sendData('zresetn')}>
           <Text style={styles.buttonText}>Reset</Text>
         </TouchableOpacity>
       </View>
 
-      <View>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter MJPEG endpoint"
-          value={inputUrl}
-          onChangeText={setInputUrl}
-        />
-        <Button title="Load Video" onPress={handleSetUrl} />
-        {url && (
-          <WebView
-            originWhitelist={['*']}
-            source={{html: htmlContent}}
-            style={styles.webview}
-            onError={() => setLoadError(true)}
-          />
-        )}
+      <View style={styles.videocontainer}>
+        {/* put video container here */}
       </View>
     </View>
   );
@@ -337,21 +288,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     textAlign: 'center',
   },
-  input: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 12,
-    paddingHorizontal: 8,
+  resetButton: {
+    backgroundColor: '#033240',
+    padding: 10,
+    borderRadius: 5,
+    width: 100,
+    alignItems: 'center',
   },
-  webview: {
-    flex: 0.3,
-    width: '100%',
-    height: '100%',
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    marginTop: 5,
   },
-  placeholder: {
-    flex: 1,
-    backgroundColor: '#fff',
+  videoContainer: {
+    flex: 0.4,
   },
 });
 
