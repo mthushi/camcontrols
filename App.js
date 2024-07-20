@@ -6,12 +6,14 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import {Picker} from '@react-native-picker/picker';
 import {ColorPicker} from 'react-native-color-picker';
 import tinycolor from 'tinycolor2';
 import Modal from 'react-native-modal';
+import {WebView} from 'react-native-webview';
 
 const ArrowButton = ({text, onPress}) => (
   <TouchableOpacity style={styles.arrowButton} onPress={onPress}>
@@ -25,6 +27,9 @@ const App = () => {
   const [selectedValue, setSelectedValue] = useState(10);
   const [modelVisible, setModalVisible] = useState(false);
   const [selectedColor, setSelectedColor] = useState('#ffffff');
+  const [inputUrl, setInputUrl] = useState('');
+  const [url, setUrl] = useState('');
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     const fetchPairedDevices = async () => {
@@ -69,7 +74,7 @@ const App = () => {
 
   const handleColorSelection = () => {
     setModalVisible(false);
-    console.log('handleCOlorselection');
+    console.log('handleColorSelection');
   };
 
   const handleColorSelected = color => {
@@ -79,22 +84,58 @@ const App = () => {
     console.log(selectedColor);
   };
 
+  const handleSetUrl = () => {
+    setUrl(inputUrl);
+    setLoadError(false);
+  };
+
+  const htmlContent = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ESP32-CAM Stream</title>
+      <style>
+        body {
+          margin: 0;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          background-color: black;
+        }
+        img {
+          width: 100%;
+          height: auto;
+        }
+      </style>
+  </head>
+  <body>
+      <img src="${url}" onerror="document.body.innerHTML = '<h1 style=\\"color: white;\\">Failed to load stream</h1>'" />
+  </body>
+  </html>
+  `;
+
   return (
-    <View>
-      {!connectedDevice && (
-        <FlatList
-          data={devices}
-          keyExtractor={item => item.address}
-          renderItem={({item}) => (
-            <Button title={item.name} onPress={() => connectToDevice(item)} />
-          )}
-        />
-      )}
-      {connectedDevice && (
-        <View>
-          <Text>Connected to {connectedDevice.name}</Text>
-        </View>
-      )}
+    <View style={styles.container}>
+      <View>
+        {!connectedDevice && (
+          <FlatList
+            data={devices}
+            keyExtractor={item => item.address}
+            renderItem={({item}) => (
+              <Button title={item.name} onPress={() => connectToDevice(item)} />
+            )}
+          />
+        )}
+        {connectedDevice && (
+          <View style={styles.connectedDeviceContainer}>
+            <Text>Connected to {connectedDevice.name}</Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.section1}>
         <Text style={styles.label}>Stepper motor control</Text>
@@ -153,8 +194,7 @@ const App = () => {
       </View>
 
       <View style={styles.section3}>
-        <Text style={styles.label}>Camera stand control</Text>
-
+        <Text style={styles.label}>Camera stand control</Text>
         <View style={styles.arrowContainer}>
           <View style={styles.row}>
             <ArrowButton text="↑" onPress={() => sendData('1n')} />
@@ -183,13 +223,43 @@ const App = () => {
       </View>
 
       <View style={styles.videocontainer}>
-        {/* put video container here */}
+        <TextInput
+          style={styles.input}
+          placeholder="Enter MJPEG endpoint"
+          value={inputUrl}
+          onChangeText={setInputUrl}
+        />
+        <Button title="Load Video" onPress={handleSetUrl} />
+        {url ? (
+          <WebView
+            originWhitelist={['*']}
+            source={{html: htmlContent}}
+            style={styles.webview}
+            onError={() => setLoadError(true)}
+          />
+        ) : (
+          <View style={styles.placeholder}>
+            <Text>Please enter a valid URL</Text>
+          </View>
+        )}
+        {loadError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Failed to load stream</Text>
+          </View>
+        )}
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+  connectedDeviceContainer: {
+    marginBottom: 10, // Adjust margin as needed
+  },
   label: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -249,10 +319,6 @@ const styles = StyleSheet.create({
   colorPicker: {
     flex: 1,
   },
-  section0: {
-    backgroundColor: '#ffffff',
-    height: '45%',
-  },
   section1: {
     backgroundColor: '#E0F8E0',
     marginBottom: 2,
@@ -301,8 +367,32 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 5,
   },
-  videoContainer: {
-    flex: 0.4,
+  videocontainer: {
+    flex: 1,
+    marginTop: 20,
+  },
+  input: {
+    height: 40,
+    borderColor: 'gray',
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  webview: {
+    flex: 1,
+    width: '100%',
+  },
+  placeholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: 'red',
   },
 });
 
